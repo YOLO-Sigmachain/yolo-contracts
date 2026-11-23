@@ -1,0 +1,29 @@
+# Rust build output
+target/
+Cargo.lock
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Scala build output
+.bsp/
+.metals/
+.scala-build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local settings and secrets
+.env
+.env.local
+*.env.local
