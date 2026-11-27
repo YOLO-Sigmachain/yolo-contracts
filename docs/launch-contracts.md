@@ -99,7 +99,7 @@ flowchart LR
 
 ### Merge accumulation boxes (keeper)
 
-Anyone may merge accumulation boxes of one fund into a single box at the same script; the accumulation boxes need no signature. Every box merged must hold no tokens and be more than 20,160 blocks old (about 7 days), and the merged box must hold at least their total, with no tokens and no registers. The keeper pays the fee from a separate input. No tool builds this transaction yet; the diagram follows the layout given in the contract header. The test `coinbase_to_fund_end_to_end` in `05-integration-tests` checks the merge itself (two boxes into one, refused inside the cooldown, accepted after it).
+Anyone may merge accumulation boxes of one fund into a single box at the same script; the accumulation boxes need no signature. Every box merged must hold no tokens and be more than 20,160 blocks old (about 7 days), and the merged box must have no tokens and no registers. From v2.3 of the accumulation contracts a merge may pay its own fee: the merged box may hold less than the total by up to 0.0005 YOLO for each box of at least 0.025 YOLO merged beyond the first, and outputs at the miner fee script must hold at least what it is short by. A merge of one box must keep the whole value, as before. Two boxes yield 0.0005 YOLO, half the node's default minimum fee of 0.001, so a merge of three or more pays for itself and a keeper needs no input of their own. Over the life of the stream the fee is at most 0.0005 YOLO per share box. No tool builds this transaction yet; the diagram follows the layout given in the contract header. The test `coinbase_to_fund_end_to_end` in `05-integration-tests` checks the merge itself (two boxes into one, refused inside the cooldown, accepted after it).
 
 ```mermaid
 %% keeper merge · treasury_accumulation.es and lp_accumulation.es PATH 1 · taken from the contract, no builder
@@ -107,13 +107,13 @@ flowchart LR
   subgraph IN["INPUTS · spent"]
     A1["accumulation box 1<br/>older than 20,160 blocks<br/>no tokens"]
     AN["accumulation box n<br/>same script, same rules"]
-    K["keeper fee input"]
+    K["keeper fee input<br/>optional from v2.3"]
   end
   TX{{"merge, unsigned"}}
   subgraph OUT["OUTPUTS · created"]
-    O["O0 merged box<br/>same accumulation script<br/>value at least the total<br/>no tokens, no registers"]
+    O["O0 merged box<br/>same accumulation script<br/>value at least the total<br/>less the merge fee<br/>no tokens, no registers"]
     C["keeper change"]
-    F["miner fee"]
+    F["miner fee<br/>at least what O0 is short by"]
   end
   A1 --> TX
   AN --> TX
@@ -371,6 +371,7 @@ All block counts at 30 second blocks.
 | Last emission spend | height 21,023,916, for a 177,291,250 YOLO genesis box | node `YoloEmissionRules.scala` | about 20 years |
 | Miner output lock | 2,880 blocks | `emission.es` miner script, node `YoloEmissionTx.scala` | about 1 day |
 | Merge cooldown | more than 20,160 blocks since the box was created | accumulation `cooldownBlocks` | 7 days |
+| Merge fee | up to 0.0005 YOLO per box merged beyond the first, counting boxes of at least 0.025 YOLO | accumulation `mergeFeePerBox`, `feeEligibleMin` (v2.3) | |
 | Merged box creation height | within 10 blocks of inclusion, so a merged box can be merged again after 20,150 | accumulation contracts | 5 minutes |
 | Fund wait | 8,640 blocks; usable from the 8,641st | fund `timelockBlocks` | 72 hours |
 | Treasury payment window, both migration windows | 20,160 blocks after the wait, so up to 28,800 after the recorded height | fund `windowBlocks` | 7 days, 10 days in all |
@@ -396,7 +397,8 @@ All block counts at 30 second blocks.
 - **Do not send coins to a fund address.** A box at a fund script without the fund NFT can never be spent by the signers; only storage rent can reach it, after 1,051,200 blocks. Deposits go to the accumulation address.
 - **What cannot be undone.** An executed payment, an LP spend, and a whitelist entry. Whitelist entries can never be removed, so 64 additions is the limit while the LP fund stays at this contract. A matured entry can receive a spend at any later time, unless the fund is frozen, with two signatures.
 - **What can be undone.** A recorded treasury payment, and a migration approval on either fund, by `cancel`. An expired payment must be cancelled before a new one can be approved.
-- **Keepers.** A merge needs no fund keys, only boxes older than 20,160 blocks and a fee input of the keeper's own. No tool builds it yet.
+- **Keepers.** A merge needs no fund keys, only boxes older than 20,160 blocks. From v2.3 a merge of three or more boxes pays its own fee out of the merged value; a merge of two needs 0.0005 YOLO of the keeper's own at the node's default minimum fee. No tool builds it yet, and a keeper has to run from launch: a share box left unspent for 1,051,200 blocks (one year) owes storage rent to miners, and from the later reward years one share is smaller than that rent.
+- **A merge can void a signed forward.** A forward names the accumulation boxes it spends. If one of them is older than 20,160 blocks, anyone may merge it first, and from v2.3 the block's miner is paid to. Build a forward only from boxes that will still be inside the 20,160-block cooldown when it lands, or from a freshly merged box.
 
 ## Contracts
 
@@ -415,8 +417,8 @@ Paths: normal, four outputs (successor, treasury share, LP share, miner); termin
 ### Treasury accumulation and LP accumulation: `02-treasury-tests/treasury_accumulation.es`, `03-lp-fund-tests/lp_accumulation.es`
 
 One contract in two copies that differ only in the NFT id they name (`treasuryNftId` or `lpNftId`). Guards the share boxes paid by each block. No registers, no signature.
-Constants: the fund NFT id; `cooldownBlocks` 20,160.
-Paths: consolidation, a keeper merge into one box at the same script; transfer, a forward into whichever box is input 0 and holds the fund NFT at tokens(0). Because the destination is named by NFT, the stream follows the NFT.
+Constants: the fund NFT id; `cooldownBlocks` 20,160; `mergeFeePerBox` 500,000 nano; `feeEligibleMin` 25,000,000 nano; the miner fee script.
+Paths: consolidation, a keeper merge into one box at the same script, which may pay the merge fee to the miner fee script; transfer, a forward into whichever box is input 0 and holds the fund NFT at tokens(0). Because the destination is named by NFT, the stream follows the NFT.
 
 ### Treasury fund: `02-treasury-tests/treasury_governance.es`
 
@@ -458,5 +460,7 @@ Paths: 1 spend; 2 whitelist update; 3 consolidation, used by forwards; 4 freeze;
 | Signing tool | `09-fund-signing/test_fundsign.py`, run with `python3 -I test_fundsign.py` (offline) |
 
 The Rust suites run with `cargo test --release -- --nocapture` in each test folder (as given in `01-emission-tests/README.md`; needs Rust 1.85 or later). They load the compiled trees from the `trees/` folders of `01-emission-tests`, `02-treasury-tests` and `03-lp-fund-tests`, which are built with test NFT ids; the integration suite also loads one DAO contract tree from `05-integration-tests/trees`.
+
+The two accumulation sources are at v2.3 and the trees in `02-treasury-tests/trees` and `03-lp-fund-tests/trees` are still v2.2, so the suites do not yet run the merge fee, and `gen_trees.py --check` reports DIFF for those two. Regenerating them changes the two tree hashes pinned in the tests and the two hashes the genesis emission box carries in R4 and R5.
 
 To compile the five contracts and compare them with those trees, run `python3 gen_trees.py --check` in `05-integration-tests/compile`. It needs scala-cli and a JVM and talks to no node. `python3 gen_trees.py --ids EMISSION=<id> TREASURY=<id> LP=<id>` compiles with real NFT ids and prints the trees and the two hashes for the emission box's R4 and R5, without writing anything.

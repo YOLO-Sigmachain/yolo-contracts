@@ -54,7 +54,8 @@ Three things to know before reading them:
 - A public testnet, published node builds, seed nodes and a hosted explorer.
 - A starting difficulty. It is set just before the public testnet.
 - Final signer keys for the treasury and the liquidity fund.
-- An operator for the keeper that forwards treasury and liquidity boxes.
+- An operator for the keeper that forwards treasury and liquidity boxes, and a tool that builds the keeper's merge.
+- Compiled trees and tests for v2.3 of the two accumulation contracts (the merge fee). The trees in the repository are v2.2.
 - Published wallet builds.
 
 ## Repository layout
